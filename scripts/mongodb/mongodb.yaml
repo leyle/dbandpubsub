@@ -1,0 +1,35 @@
+version: '3.6'
+
+networks:
+  mongodb-nt:
+    name: $NETWORK
+
+services:
+  mongo:
+    image: mongo:$TAG
+      # command: "mongod --replSet $REPLICA_SET_NAME --keyFile /data/replica.key"
+    command: "mongod --config /etc/mongod.conf"
+    restart: always
+    container_name: $CONTAINER
+    environment:
+      - TZ=$TIMEZONE
+      - MONGO_INITDB_ROOT_USERNAME=$ROOTUSER
+      - MONGO_INITDB_ROOT_PASSWORD=$ROOTPASSWD
+      - MONGO_INITDB_DATABASE=$DBDEV
+    volumes:
+      - $PWD/data:/data/db
+      - $PWD/server.yaml:/etc/mongod.conf
+      - $PWD/keyfile/dev.key:/data/replica.key.tmp
+      - ./db-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    entrypoint:
+        - bash
+        - -c
+        - |
+            cp /data/replica.key.tmp /data/replica.key
+            chmod 400 /data/replica.key
+            chown 999:999 /data/replica.key
+            exec docker-entrypoint.sh $$@
+    networks:
+      - mongodb-nt
+    ports:
+      - $PORT:27017

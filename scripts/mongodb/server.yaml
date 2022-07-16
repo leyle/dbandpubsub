@@ -1,0 +1,26 @@
+# systemLog:
+#   path: /tmp/server.log
+#   destination: file
+#   logAppend: true
+
+# processManagement:
+#   fork: false
+#   pidFilePath: /tmp/server.pid
+
+net:
+  port: 27017
+  bindIp: 0.0.0.0
+
+storage:
+  dbPath: /data/db
+  wiredTiger:
+    engineConfig:
+      cacheSizeGB: 4
+
+security:
+  authorization: enabled
+  keyFile: /data/replica.key
+
+replication:
+  replSetName: devRepl
+  enableMajorityReadConcern: true
