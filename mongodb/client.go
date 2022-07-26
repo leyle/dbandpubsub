@@ -9,12 +9,12 @@ import (
 	"time"
 )
 
-type MgoClient struct {
+type DataSource struct {
 	op     *MgoOption
 	client *mongo.Client
 }
 
-func NewMgoClient(op *MgoOption) *MgoClient {
+func NewDataSource(op *MgoOption) *DataSource {
 	// it's safe to use in concurrent goroutines
 	// check options
 	if op.ReadTimeout < defaultReadTimeout {
@@ -24,10 +24,10 @@ func NewMgoClient(op *MgoOption) *MgoClient {
 		op.WriteTimeout = defaultWriteTimeout
 	}
 
-	fmt.Println("NewMgoClient, options are: ", op)
+	fmt.Println("NewDataSource, options are: ", op)
 	fmt.Println("read timeout is: ", op.ReadTimeout)
 	fmt.Println("write timeout is: ", op.WriteTimeout)
-	fmt.Println("minPoolSize:", *defaultClientPoolSizeOption.MinPoolSize, "maxPoolSize:", *defaultClientPoolSizeOption.MaxPoolSize)
+	fmt.Println("default minPoolSize:", *defaultClientPoolSizeOption.MinPoolSize, "default maxPoolSize:", *defaultClientPoolSizeOption.MaxPoolSize)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(op.ReadTimeout)*time.Second)
 	defer cancel()
@@ -42,28 +42,32 @@ func NewMgoClient(op *MgoOption) *MgoClient {
 		panic(err)
 	}
 
-	ds := &MgoClient{
+	ds := &DataSource{
 		op:     op,
 		client: client,
 	}
 	return ds
 }
 
-func (ds *MgoClient) C(collection string) *mongo.Collection {
+func (ds *DataSource) C(collection string) *mongo.Collection {
 	return ds.client.Database(ds.op.Database).Collection(collection)
 }
 
-func (ds *MgoClient) Close() {
+func (ds *DataSource) Client() *mongo.Client {
+	return ds.client
+}
+
+func (ds *DataSource) Close() {
 	ds.client.Disconnect(context.TODO())
 }
 
-func (ds *MgoClient) ReadContext() context.Context {
+func (ds *DataSource) ReadContext() context.Context {
 	ctx := context.Background()
 	ctx, _ = context.WithTimeout(ctx, time.Duration(ds.op.ReadTimeout)*time.Second)
 	return ctx
 }
 
-func (ds *MgoClient) WriteContext() context.Context {
+func (ds *DataSource) WriteContext() context.Context {
 	ctx := context.Background()
 	ctx, _ = context.WithTimeout(ctx, time.Duration(ds.op.WriteTimeout)*time.Second)
 	return ctx

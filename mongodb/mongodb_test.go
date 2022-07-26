@@ -14,6 +14,12 @@ import (
 	"time"
 )
 
+var mgoHostPorts = []string{
+	"mgo0.dev.pymom.com:27017",
+	"mgo1.dev.pymom.com:27018",
+	"mgo2.dev.pymom.com:27019",
+}
+
 type Sample struct {
 	Id      string `json:"id" bson:"_id"`
 	Name    string `json:"name" bson:"name"`
@@ -85,13 +91,8 @@ func generateSampleConsent() *SampleConsent {
 }
 
 func getOption() *MgoOption {
-	hostPorts := []string{
-		"mgohkma1.devdb.fdipoc.com:37017",
-		"mgohkma2.devdb.fdipoc.com:37017",
-		"mgohkma3.devdb.fdipoc.com:37017",
-	}
 	op := &MgoOption{
-		HostPorts: hostPorts,
+		HostPorts: mgoHostPorts,
 		Username:  "dbuser",
 		Password:  "dbpasswd",
 		Database:  "dev",
@@ -112,13 +113,8 @@ func getOption() *MgoOption {
 }
 
 func TestOption_URI(t *testing.T) {
-	hostPorts := []string{
-		"mgo.org1.emali.dev:27017",
-		"mgo.org1.emali.dev:27018",
-		"mgo.org1.emali.dev:27019",
-	}
 	op1 := &MgoOption{
-		HostPorts:  hostPorts,
+		HostPorts:  mgoHostPorts,
 		Username:   "dbuser",
 		Password:   "dbpasswd",
 		Database:   "dev",
@@ -137,13 +133,8 @@ func TestOption_URI(t *testing.T) {
 }
 
 func TestClient(t *testing.T) {
-	hostPorts := []string{
-		"mgohkma1.devdb.fdipoc.com:37017",
-		"mgohkma2.devdb.fdipoc.com:37017",
-		"mgohkma3.devdb.fdipoc.com:37017",
-	}
 	op := &MgoOption{
-		HostPorts:  hostPorts,
+		HostPorts:  mgoHostPorts,
 		Username:   "dbuser",
 		Password:   "dbpasswd",
 		Database:   "dev",
@@ -208,13 +199,13 @@ func TestClient(t *testing.T) {
 func TestMgoClient_C(t *testing.T) {
 	op := getOption()
 
-	ds := NewMgoClient(op)
+	ds := NewDataSource(op)
 	defer ds.Close()
 
 	var wg sync.WaitGroup
 	maxGoRoutines := make(chan struct{}, defaultMaxPoolSize)
 
-	for i := 0; i < 5022; i++ {
+	for i := 0; i < 20000; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -230,7 +221,7 @@ func TestMgoClient_C(t *testing.T) {
 	wg.Wait()
 }
 
-func writeData(ds *MgoClient) string {
+func writeData(ds *DataSource) string {
 	collectionName := "test"
 	data := generateData()
 	resp, err := ds.C(collectionName).InsertOne(ds.WriteContext(), data)
@@ -241,18 +232,19 @@ func writeData(ds *MgoClient) string {
 	return data.Id
 }
 
-func writeConsent(ds *MgoClient) string {
+func writeConsent(ds *DataSource) string {
 	collectionName := "test-consent"
 	data := generateSampleConsent()
 	resp, err := ds.C(collectionName).InsertOne(ds.WriteContext(), data)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		return err.Error()
 	}
 	fmt.Println("writeConsent", data.Id, resp.InsertedID)
 	return data.Id
 }
 
-func getData(ds *MgoClient, id string) *Sample {
+func getData(ds *DataSource, id string) *Sample {
 	collectionName := "test"
 	query := bson.M{
 		"_id": id,
@@ -267,7 +259,7 @@ func getData(ds *MgoClient, id string) *Sample {
 	return data
 }
 
-func updateData(ds *MgoClient, id string, update *bson.M) {
+func updateData(ds *DataSource, id string, update *bson.M) {
 	collectionName := "test"
 
 	resp, err := ds.C(collectionName).UpdateByID(ds.WriteContext(), id, update)
@@ -279,7 +271,7 @@ func updateData(ds *MgoClient, id string, update *bson.M) {
 
 func TestCRUD(t *testing.T) {
 	op := getOption()
-	ds := NewMgoClient(op)
+	ds := NewDataSource(op)
 	defer ds.Close()
 
 	// create
@@ -302,10 +294,33 @@ func TestCRUD(t *testing.T) {
 
 func TestWriteConsent(t *testing.T) {
 	op := getOption()
-	ds := NewMgoClient(op)
+	ds := NewDataSource(op)
 	defer ds.Close()
 
 	// create
 	did := writeConsent(ds)
 	t.Log("writeConsent:", did)
+}
+
+func TestTransaction(t *testing.T) {
+	op := getOption()
+	ds := NewDataSource(op)
+	defer ds.Close()
+
+	callback := func(sctx mongo.SessionContext) (interface{}, error) {
+		return nil, nil
+	}
+
+	session, err := ds.Client().StartSession()
+	if err != nil {
+		t.Error(err)
+	}
+	defer session.EndSession(ds.WriteContext())
+
+	result, err := session.WithTransaction(ds.WriteContext(), callback)
+	if err != nil {
+		t.Error(err)
+	}
+
+	t.Log(result)
 }
