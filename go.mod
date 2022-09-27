@@ -2,7 +2,7 @@ module github.com/leyle/dbandpubsub
 
 go 1.18
 
-require go.mongodb.org/mongo-driver v1.10.0
+require go.mongodb.org/mongo-driver v1.10.2
 
 require (
 	github.com/golang/snappy v0.0.1 // indirect
