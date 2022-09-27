@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+// index ref: https://www.mongodb.com/docs/manual/indexes/
+
 const (
 	sortOrderAscending  = 1
 	sortOrderDescending = -1
