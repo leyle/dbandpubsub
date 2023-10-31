@@ -168,7 +168,7 @@ func (ec *EventConnector) sendToDLQ(ctx context.Context, msg *kafka.Message) err
 	event := &Event{
 		Topic:   ec.opt.DLQTopic,
 		Key:     string(key),
-		Val:     string(val),
+		Val:     val,
 		Headers: reqHeaders,
 	}
 

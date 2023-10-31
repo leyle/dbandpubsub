@@ -36,7 +36,7 @@ func newProducer(opt *EventOption) (*eventProducer, error) {
 }
 
 func (ec *EventConnector) SendEvent(ctx context.Context, event *Event) (*kafka.Message, error) {
-	if event == nil || event.Topic == "" || event.Key == "" || event.Val == "" {
+	if event == nil || event.Topic == "" || event.Key == "" || event.Val == nil {
 		return nil, errors.New("invalid event parameter")
 	}
 
@@ -51,7 +51,7 @@ func (ec *EventConnector) SendEvent(ctx context.Context, event *Event) (*kafka.M
 	msg := &kafka.Message{
 		TopicPartition: tp,
 		Key:            []byte(event.Key),
-		Value:          []byte(event.Val),
+		Value:          event.Val,
 	}
 
 	if event.Headers != nil && len(event.Headers) > 0 {

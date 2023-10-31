@@ -38,7 +38,7 @@ func generateEvent() *kafkaconnector.Event {
 	event := &kafkaconnector.Event{
 		Topic: produceTopics["cdi"],
 		Key:   key,
-		Val:   val,
+		Val:   []byte(val),
 	}
 
 	return event

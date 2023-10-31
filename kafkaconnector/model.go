@@ -51,6 +51,6 @@ func (opt *EventOption) GetServers() string {
 type Event struct {
 	Topic   string
 	Key     string
-	Val     string
+	Val     []byte
 	Headers map[string]string
 }
