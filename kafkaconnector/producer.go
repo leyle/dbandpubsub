@@ -87,3 +87,31 @@ func (ec *EventConnector) SendEvent(ctx context.Context, event *Event) (*kafka.M
 	logger.Debug().Str("topic", event.Topic).Str("key", event.Key).Msg("successfully sent event")
 	return m, nil
 }
+
+func (ec *EventConnector) ForwardEvent(ctx context.Context, msg *kafka.Message) error {
+	// send it to kafka synchronously
+	logger := zerolog.Ctx(ctx)
+	topic := *msg.TopicPartition.Topic
+	key := msg.Key
+	logger.Debug().Str("topic", topic).Str("key", string(key)).Msg("start forwarding kafka msg")
+
+	deliveryChan := make(chan kafka.Event)
+	defer close(deliveryChan)
+
+	err := ec.producer.Produce(msg, deliveryChan)
+	if err != nil {
+		logger.Error().Err(err).Msg("send event failed")
+		return err
+	}
+
+	e := <-deliveryChan
+	m := e.(*kafka.Message)
+
+	if m.TopicPartition.Error != nil {
+		logger.Error().Err(m.TopicPartition.Error).Msg("sending event received failure response")
+		return m.TopicPartition.Error
+	}
+
+	logger.Debug().Str("topic", topic).Str("key", string(key)).Msg("successfully forwarded kafka msg")
+	return nil
+}
