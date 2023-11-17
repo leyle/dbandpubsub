@@ -48,7 +48,9 @@ func NewEventConnector(opt *EventOption) (*EventConnector, error) {
 func (ec *EventConnector) Stop(ctx context.Context) {
 	ec.consumer.Close()
 	ec.producer.Close()
-	ec.adminClient.Close()
+	if ec.opt.NeedAdmin {
+		ec.adminClient.Close()
+	}
 }
 
 func parseOption(opt *EventOption) {
