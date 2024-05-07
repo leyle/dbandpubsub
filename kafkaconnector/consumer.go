@@ -105,6 +105,7 @@ func (ec *EventConnector) ConsumeEvent(ctx context.Context, topics []string, cal
 
 func (ec *EventConnector) HandleError(ctx context.Context) {
 	logger := zerolog.Ctx(ctx)
+	logger.Debug().Msg("start consumer's error handle function")
 	for {
 		select {
 		case <-ec.consumer.stopCh:

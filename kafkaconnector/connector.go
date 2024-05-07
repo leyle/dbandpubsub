@@ -2,6 +2,7 @@ package kafkaconnector
 
 import (
 	"context"
+	"github.com/rs/zerolog"
 	"time"
 )
 
@@ -46,11 +47,28 @@ func NewEventConnector(opt *EventOption) (*EventConnector, error) {
 }
 
 func (ec *EventConnector) Stop(ctx context.Context) {
+	logger := zerolog.Ctx(ctx)
+	logger.Info().Msg("try to stop kafka client")
 	ec.consumer.Close()
 	ec.producer.Close()
 	if ec.opt.NeedAdmin {
 		ec.adminClient.Close()
 	}
+}
+
+func (ec *EventConnector) Reconnect(ctx context.Context) (*EventConnector, error) {
+	logger := zerolog.Ctx(ctx)
+	logger.Info().Msg("try to stop and reconnect kafka")
+	ec.Stop(ctx)
+
+	opt := ec.opt
+	newEC, err := NewEventConnector(opt)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to reconnect to kafka")
+		return nil, err
+	}
+
+	return newEC, nil
 }
 
 func parseOption(opt *EventOption) {
