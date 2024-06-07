@@ -15,6 +15,7 @@ type eventProducer struct {
 func newProducer(opt *EventOption) (*eventProducer, error) {
 	conf := kafka.ConfigMap{
 		"bootstrap.servers": opt.GetServers(),
+		"message.max.bytes": defaultRequestMsgSize,
 	}
 	if opt.MoreOptions != nil && len(opt.MoreOptions) > 0 {
 		for k, v := range opt.MoreOptions {

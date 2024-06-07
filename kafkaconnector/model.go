@@ -13,6 +13,7 @@ const (
 	defaultRetryCount     = 3
 	defaultRetryDelay     = 5 // seconds
 	defaultDQLTopic       = "dead-letter-queue"
+	defaultRequestMsgSize = 10_000_000 // ~ 10m
 )
 
 type EventOption struct {
