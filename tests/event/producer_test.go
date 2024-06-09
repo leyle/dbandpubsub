@@ -10,9 +10,12 @@ import (
 
 var (
 	brokers = []string{
-		"k0.dev.kafka.pymom.com:9092",
-		"k1.dev.kafka.pymom.com:9192",
-		"k2.dev.kafka.pymom.com:9292",
+		"k0.x1c.pymom.com:9092",
+		"k1.x1c.pymom.com:9192",
+		"k2.x1c.pymom.com:9292",
+		// "k0.dev.kafka.pymom.com:9092",
+		// "k1.dev.kafka.pymom.com:9192",
+		// "k2.dev.kafka.pymom.com:9292",
 		// "b-3-public.cdimsktestnet.grii65.c2.kafka.ap-east-1.amazonaws.com:9194",
 		// "b-1-public.cdimsktestnet.grii65.c2.kafka.ap-east-1.amazonaws.com:9194",
 		// "b-2-public.cdimsktestnet.grii65.c2.kafka.ap-east-1.amazonaws.com:9194",
@@ -21,7 +24,7 @@ var (
 	// consumeTopics = []string{"cdi-topic", "email-topic", "cdi-event-request"}
 	// consumeTopics = []string{"cdi-create-topic-in-public"}
 	// consumeTopics = []string{"cdi-event-request"}
-	consumeTopics = []string{"dev-cdi-topic-v1"}
+	consumeTopics = []string{"dev-cdi-consumer-test"}
 	produceTopics = map[string]string{
 		// "cdi":   "dev-cdi-topic",
 		"cdi":   consumeTopics[0],

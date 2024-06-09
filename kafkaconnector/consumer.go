@@ -76,6 +76,9 @@ func (ec *EventConnector) ConsumeEvent(ctx context.Context, topics []string, cal
 		case <-ec.consumer.stopCh:
 			logger.Warn().Msg("received stop signal, consumer stopped")
 			return nil
+		case chErr := <-ec.consumer.errCh:
+			logger.Error().Msg("error occurred, return error to upstream caller")
+			return chErr
 		default:
 			msg, err := ec.consumer.ReadMessage(-1)
 			if err != nil {
