@@ -118,6 +118,10 @@ func (r *ClusterRedisClient) ReleaseLock(ctx context.Context, resource, val stri
 
 }
 
+func (r *ClusterRedisClient) Close() error {
+	return r.ClusterClient.Close()
+}
+
 func (r *ClusterRedisClient) GenerateRedisKey(moduleName, userKey string) string {
 	// SERVICE:MODULE:USER_KEY
 	// module name shouldn't have ":"

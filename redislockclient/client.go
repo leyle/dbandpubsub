@@ -8,6 +8,7 @@ import (
 
 type RedisLockClient interface {
 	redis.Cmdable
+	Close() error
 	AcquireLock(ctx context.Context, resource string, acquireTimeout, lockTimeout time.Duration) (string, bool)
 	ReleaseLock(ctx context.Context, resource, val string) bool
 	GenerateRedisKey(moduleName, userKey string) string

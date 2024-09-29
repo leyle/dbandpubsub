@@ -53,7 +53,6 @@ func NewSingletonRedisClient(cfg *RedisClientOption) (*SingletonRedisClient, err
 		return nil, err
 	}
 
-	// rcs.Redis = client
 	rcs.Client = client
 	return rcs, nil
 }
@@ -117,6 +116,10 @@ func (r *SingletonRedisClient) ReleaseLock(ctx context.Context, resource, val st
 		logger.Warn().Str("resource", resource).Str("val", val).Msg("when try to release lock, but the lock has locked by others, we think this situation is ok ")
 		return true
 	}
+}
+
+func (r *SingletonRedisClient) Close() error {
+	return r.Client.Close()
 }
 
 func (r *SingletonRedisClient) GenerateRedisKey(moduleName, userKey string) string {
