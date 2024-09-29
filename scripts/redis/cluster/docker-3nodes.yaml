@@ -1,0 +1,73 @@
+version: '3'
+
+services:
+  redis-1:
+    container_name: redis-1
+    image: redis:$VERSION
+    restart: always
+    network_mode: "host"
+    command: redis-server --port $PORT1 --cluster-enabled yes --cluster-config-file nodes-$PORT1.conf --cluster-node-timeout 5000 --appendonly yes --requirepass ${REDIS_PASSWORD} --masterauth ${REDIS_PASSWORD}
+    volumes:
+      - redis-1-data:/data
+
+  redis-2:
+    container_name: redis-2
+    image: redis:$VERSION
+    restart: always
+    network_mode: "host"
+    command: redis-server --port $PORT2 --cluster-enabled yes --cluster-config-file nodes-$PORT2.conf --cluster-node-timeout 5000 --appendonly yes --requirepass ${REDIS_PASSWORD} --masterauth ${REDIS_PASSWORD}
+    volumes:
+      - redis-2-data:/data
+
+  redis-3:
+    container_name: redis-3
+    image: redis:$VERSION
+    restart: always
+    network_mode: "host"
+    command: redis-server --port $PORT3 --cluster-enabled yes --cluster-config-file nodes-$PORT3.conf --cluster-node-timeout 5000 --appendonly yes --requirepass ${REDIS_PASSWORD} --masterauth ${REDIS_PASSWORD}
+    volumes:
+      - redis-3-data:/data
+
+  redis-4:
+    container_name: redis-4
+    image: redis:$VERSION
+    restart: always
+    network_mode: "host"
+    command: redis-server --port $PORT4 --cluster-enabled yes --cluster-config-file nodes-$PORT4.conf --cluster-node-timeout 5000 --appendonly yes --requirepass ${REDIS_PASSWORD} --masterauth ${REDIS_PASSWORD}
+    volumes:
+      - redis-4-data:/data
+
+  redis-5:
+    container_name: redis-5
+    image: redis:$VERSION
+    restart: always
+    network_mode: "host"
+    command: redis-server --port $PORT5 --cluster-enabled yes --cluster-config-file nodes-$PORT5.conf --cluster-node-timeout 5000 --appendonly yes --requirepass ${REDIS_PASSWORD} --masterauth ${REDIS_PASSWORD}
+    volumes:
+      - redis-5-data:/data
+
+  redis-6:
+    container_name: redis-6
+    image: redis:$VERSION
+    restart: always
+    network_mode: "host"
+    command: redis-server --port $PORT6 --cluster-enabled yes --cluster-config-file nodes-$PORT6.conf --cluster-node-timeout 5000 --appendonly yes --requirepass ${REDIS_PASSWORD} --masterauth ${REDIS_PASSWORD}
+    volumes:
+      - redis-6-data:/data
+
+  redis-cli:
+    container_name: redis-cli
+    image: redis:$VERSION
+    restart: always
+    network_mode: "host"
+    tty: true
+    stdin_open: true
+    command: /bin/bash
+
+volumes:
+  redis-1-data:
+  redis-2-data:
+  redis-3-data:
+  redis-4-data:
+  redis-5-data:
+  redis-6-data:

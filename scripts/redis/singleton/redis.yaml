@@ -1,0 +1,20 @@
+version: '3.6'
+
+networks:
+  redis-nt:
+    name: $NETWORK
+
+services:
+  redis:
+    image: redis:$TAG
+    container_name: $CONTAINER
+    command: redis-server --requirepass $PASSWORD
+    restart: always
+    environment:
+      - TZ=$TIMEZONE
+    volumes:
+      - $PWD/data:/var/lib/redis
+    networks:
+      - redis-nt
+    ports:
+      - $PORT:6379
