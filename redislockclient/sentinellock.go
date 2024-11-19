@@ -11,28 +11,29 @@ import (
 	"time"
 )
 
-type ClusterRedisClient struct {
+type SentinelRedisClient struct {
 	cfg *RedisClientOption
-	*redis.ClusterClient
+	*redis.Client
 }
 
-func NewClusterRedisClient(cfg *RedisClientOption) (*ClusterRedisClient, error) {
-	rcc := &ClusterRedisClient{
+func NewSentinelRedisClient(cfg *RedisClientOption) (*SentinelRedisClient, error) {
+	rcs := &SentinelRedisClient{
 		cfg: cfg,
 	}
 
-	opt := &redis.ClusterOptions{
-		Addrs:    cfg.HostPorts,
-		Password: cfg.Password,
+	opt := &redis.FailoverOptions{
+		SentinelAddrs: cfg.HostPorts,
+		MasterName:    rcs.cfg.MasterName,
+		Password:      rcs.cfg.Password,
 	}
 
-	client := redis.NewClusterClient(opt)
+	client := redis.NewFailoverClient(opt)
 
 	// test redis connection
-	key := rcc.GenerateRedisKey(moduleName, "test-redis")
+	ctx := context.Background()
+	key := rcs.GenerateRedisKey(moduleName, "test-redis")
 	val := "test-redis-connection"
 
-	ctx := context.Background()
 	err := client.Set(ctx, key, val, 0).Err()
 	if err != nil {
 		return nil, err
@@ -50,11 +51,12 @@ func NewClusterRedisClient(cfg *RedisClientOption) (*ClusterRedisClient, error) 
 	if err != nil {
 		return nil, err
 	}
-	rcc.ClusterClient = client
-	return rcc, nil
+
+	rcs.Client = client
+	return rcs, nil
 }
 
-func (r *ClusterRedisClient) AcquireLock(ctx context.Context, resource string, acquireTimeout, lockTimeout time.Duration) (string, bool) {
+func (r *SentinelRedisClient) AcquireLock(ctx context.Context, resource string, acquireTimeout, lockTimeout time.Duration) (string, bool) {
 	logger := zerolog.Ctx(ctx)
 
 	if acquireTimeout <= 0 {
@@ -90,7 +92,7 @@ func (r *ClusterRedisClient) AcquireLock(ctx context.Context, resource string, a
 	return "", false
 }
 
-func (r *ClusterRedisClient) ReleaseLock(ctx context.Context, resource, val string) bool {
+func (r *SentinelRedisClient) ReleaseLock(ctx context.Context, resource, val string) bool {
 	logger := zerolog.Ctx(ctx)
 
 	redisKey := r.GenerateRedisKey(moduleName, resource)
@@ -116,11 +118,11 @@ func (r *ClusterRedisClient) ReleaseLock(ctx context.Context, resource, val stri
 	}
 }
 
-func (r *ClusterRedisClient) Close() error {
-	return r.ClusterClient.Close()
+func (r *SentinelRedisClient) Close() error {
+	return r.Client.Close()
 }
 
-func (r *ClusterRedisClient) GenerateRedisKey(moduleName, userKey string) string {
+func (r *SentinelRedisClient) GenerateRedisKey(moduleName, userKey string) string {
 	// SERVICE:MODULE:USER_KEY
 	// module name shouldn't have ":"
 	moduleName = strings.ReplaceAll(moduleName, ":", "")

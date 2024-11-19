@@ -1,32 +1,34 @@
 package redislockclient
 
 import (
-	"context"
 	"errors"
 	"github.com/leyle/crud-objectid/pkg/objectid"
-	"github.com/leyle/dbandpubsub/logclient"
-	"github.com/rs/zerolog"
 	"testing"
 	"time"
 )
 
-func newRedisClientSingleTon() *SingletonRedisClient {
+var sentinelHostPorts = []string{
+	"redis.x1c.pymom.com:26379",
+	"redis.x1c.pymom.com:26380",
+	"redis.x1c.pymom.com:26381",
+}
+
+func newRedisClientSentinel() *SentinelRedisClient {
 	var cfg = &RedisClientOption{
-		HostPorts:   []string{"redis.x1c.pymom.com:6379"},
-		Password:    "abc123",
-		DbNO:        defaultDbNO,
+		HostPorts:   sentinelHostPorts,
 		ServiceName: "TEST",
+		MasterName:  "mymaster",
 	}
-	client, err := NewSingletonRedisClient(cfg)
+
+	client, err := NewSentinelRedisClient(cfg)
 	if err != nil {
 		panic(err)
 	}
 	return client
 }
 
-func TestRedisClientSingleton_AcquireLock(t *testing.T) {
-	client := newRedisClientSingleTon()
-
+func TestNewSentinelRedisClient(t *testing.T) {
+	client := newRedisClientSentinel()
 	ctx := wrapZeroLogContext()
 
 	resource := objectid.GetObjectId()
@@ -52,11 +54,4 @@ func TestRedisClientSingleton_AcquireLock(t *testing.T) {
 
 	// release first lock
 	_ = client.ReleaseLock(ctx, resource, lockVal)
-}
-
-func wrapZeroLogContext() context.Context {
-	logger := logclient.NewConsoleLogger(zerolog.DebugLevel)
-	ctx := logger.WithContext(context.Background())
-
-	return ctx
 }

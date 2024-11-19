@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var hosts = []string{
+var clusterHostPorts = []string{
 	"redis.x1c.pymom.com:6379",
 	"redis.x1c.pymom.com:6380",
 	"redis.x1c.pymom.com:6381",
@@ -18,7 +18,7 @@ var hosts = []string{
 }
 
 var clusterCfg = &RedisClientOption{
-	HostPorts:   hosts,
+	HostPorts:   clusterHostPorts,
 	Password:    "abc123",
 	ServiceName: "TEST-CLUSTER",
 }
@@ -68,12 +68,13 @@ func TestRedisClientCluster_AcquireLock(t *testing.T) {
 	// test that another lock attempt fails while the first lock is held
 	// this lock should wait 5 secs and failed, due to first lock is last for 10 secs
 	lockVal2, ok := client.AcquireLock(ctx, resource, 5*time.Second, -1)
+	if !ok {
+		t.Log("ok, lock failed as expected")
+	}
+
 	if ok {
 		t.Log("lockVal2", lockVal2)
 		t.Fatal(errors.New("expected to not acquire lock but did"))
-	}
-	if !ok {
-		t.Log("ok, lock failed as expected")
 	}
 
 	// release first lock

@@ -1,1 +1,8 @@
-# kafka provider and consumer helper library
+# db and mq helper library
+
+includes:
+
+- kafka
+- redis
+- mongodb
+- zerolog helper

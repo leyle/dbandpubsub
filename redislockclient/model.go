@@ -16,6 +16,7 @@ const (
 type RedisClientOption struct {
 	HostPorts   []string
 	Password    string
-	DbNO        int
-	ServiceName string
+	DbNO        int    // redis database number, only work for singleton
+	ServiceName string // application service name
+	MasterName  string // redis sentinel name, only work for sentinel mode
 }

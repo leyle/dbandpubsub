@@ -1,0 +1,61 @@
+version: '3.9'
+
+services:
+  redis-master:
+    image: redis:$VERSION
+    container_name: redis-master
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./master/redis.conf:/usr/local/etc/redis/redis.conf
+    network_mode: host
+
+  redis-slave:
+    image: redis:$VERSION
+    container_name: redis-slave
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--slaveof", "$IP", "6379"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - ./slave/redis.conf:/usr/local/etc/redis/redis.conf
+    network_mode: host
+
+  sentinel1:
+    image: redis:$VERSION
+    container_name: redis-sentinel1
+    command: ["redis-sentinel", "/usr/local/etc/sentinel.conf"]
+    ports:
+      - "26379:26379"
+    volumes:
+      - ./sentinel1/sentinel.conf:/usr/local/etc/sentinel.conf
+    network_mode: host
+
+  sentinel2:
+    image: redis:$VERSION
+    container_name: redis-sentinel2
+    command: ["redis-sentinel", "/usr/local/etc/sentinel.conf"]
+    ports:
+      - "26380:26379"
+    volumes:
+      - ./sentinel2/sentinel.conf:/usr/local/etc/sentinel.conf
+    network_mode: host
+
+  sentinel3:
+    image: redis:$VERSION
+    container_name: redis-sentinel3
+    command: ["redis-sentinel", "/usr/local/etc/sentinel.conf"]
+    ports:
+      - "26381:26379"
+    volumes:
+      - ./sentinel3/sentinel.conf:/usr/local/etc/sentinel.conf
+    network_mode: host
+
+  redis-cli:
+    container_name: redis-cli
+    image: redis:$VERSION
+    restart: always
+    network_mode: "host"
+    tty: true
+    stdin_open: true
+    command: /bin/bash

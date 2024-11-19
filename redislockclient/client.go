@@ -20,5 +20,9 @@ func NewRedisLockClient(cfg *RedisClientOption) (RedisLockClient, error) {
 		return NewSingletonRedisClient(cfg)
 	}
 
+	if cfg.MasterName != "" {
+		return NewSentinelRedisClient(cfg)
+	}
+
 	return NewClusterRedisClient(cfg)
 }
