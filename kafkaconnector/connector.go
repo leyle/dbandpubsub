@@ -49,6 +49,15 @@ func NewEventConnector(opt *EventOption) (*EventConnector, error) {
 func (ec *EventConnector) Stop(ctx context.Context) {
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Msg("try to stop kafka client")
+
+	// Signal consumer to stop gracefully first
+	select {
+	case ec.consumer.stopCh <- true:
+		logger.Debug().Msg("sent stop signal to consumer")
+	default:
+		logger.Debug().Msg("stop channel already closed or full")
+	}
+
 	ec.consumer.Close()
 	ec.producer.Close()
 	if ec.opt.NeedAdmin {

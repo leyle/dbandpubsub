@@ -7,13 +7,14 @@ import (
 )
 
 const (
-	defaultSessionTimeout = 6000 // millisecond
-	defaultAdminTimeout   = 30   // seconds
-	defaultOffsetRest     = "earliest"
-	defaultRetryCount     = 3
-	defaultRetryDelay     = 5 // seconds
-	defaultDQLTopic       = "dead-letter-queue"
-	defaultRequestMsgSize = 10_000_000 // ~ 10m
+	defaultSessionTimeout   = 6000 // millisecond
+	defaultAdminTimeout     = 30   // seconds
+	defaultOffsetRest       = "earliest"
+	defaultRetryCount       = 3
+	defaultRetryDelay       = 5   // seconds
+	defaultDQLTopic         = "dead-letter-queue"
+	defaultRequestMsgSize   = 10_000_000 // ~ 10m
+	defaultWorkerBufferSize = 100        // buffer size for topic worker channels
 )
 
 type EventOption struct {
@@ -39,6 +40,9 @@ type EventOption struct {
 	DLQTopic   string        // dead letter queue
 	RetryCount int           // default is 3
 	RetryDelay time.Duration // default is 5 seconds
+
+	// concurrent consumer options
+	WorkerBufferSize int // buffer size for per-topic worker channels, default is 100
 
 	MoreOptions map[string]kafka.ConfigValue
 

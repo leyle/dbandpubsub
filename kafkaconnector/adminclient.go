@@ -68,6 +68,7 @@ func (ec *EventConnector) CreateTopics(ctx context.Context, topics []string) err
 			if strings.Contains(emsg, "exist") {
 				logger.Warn().Msgf("create topic, topic has created, %s", emsg)
 			} else {
+				logger.Error().Err(result.Error).Str("topic", result.Topic).Msg("create topic failed")
 				return result.Error
 			}
 		}
