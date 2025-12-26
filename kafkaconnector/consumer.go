@@ -3,11 +3,12 @@ package kafkaconnector
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/rs/zerolog"
-	"time"
 )
 
 type eventConsumer struct {
@@ -189,16 +190,16 @@ func (ec *EventConnector) sendToDLQ(ctx context.Context, msg *kafka.Message) err
 	return nil
 }
 
-// topicWorker holds the channel and control structures for a single topic's worker
-type topicWorker struct {
-	topic  string
+type partitionWorker struct {
+	id     string // format: "topic-partitionID"
 	msgCh  chan *kafka.Message
 	doneCh chan struct{}
 }
 
 // ConsumeEventConcurrently consumes messages from multiple topics concurrently.
-// Each topic gets its own worker goroutine, allowing parallel processing across topics.
-// Messages within the same topic are still processed sequentially (one by one).
+// It creates a dedicated worker goroutine for each Topic+Partition combination.
+// This ensures maximum parallelism (up to the number of partitions) while maintaining
+// sequential processing order within a specific partition.
 func (ec *EventConnector) ConsumeEventConcurrently(ctx context.Context, topics []string, callback eventCallback) error {
 	logger := zerolog.Ctx(ctx)
 	if topics == nil || len(topics) == 0 {
@@ -219,53 +220,44 @@ func (ec *EventConnector) ConsumeEventConcurrently(ctx context.Context, topics [
 	}
 	logger.Debug().Strs("topics", topics).Msg("successfully subscribed")
 
-	// Create workers for each topic
-	workers := make(map[string]*topicWorker)
+	// We do NOT pre-create workers here anymore.
+	// Workers will be created lazily in runDispatcher based on assigned partitions.
+	workers := make(map[string]*partitionWorker)
 	var wg sync.WaitGroup
 
-	bufferSize := ec.opt.WorkerBufferSize
-	if bufferSize <= 0 {
-		bufferSize = defaultWorkerBufferSize
-	}
-
-	for _, topic := range topics {
-		worker := &topicWorker{
-			topic:  topic,
-			msgCh:  make(chan *kafka.Message, bufferSize),
-			doneCh: make(chan struct{}),
-		}
-		workers[topic] = worker
-
-		wg.Add(1)
-		go ec.runTopicWorker(ctx, worker, callback, &wg)
-	}
-
-	logger.Info().Int("workerCount", len(workers)).Msg("started topic workers")
-
-	// Main dispatcher loop - reads messages and routes to topic workers
+	// Main dispatcher loop - reads messages and routes to partition workers
 	dispatcherDone := make(chan error, 1)
+
+	// We pass the WaitGroup to the dispatcher so it can Add(1) when creating new workers
 	go func() {
-		dispatcherDone <- ec.runDispatcher(ctx, workers)
+		dispatcherDone <- ec.runDispatcher(ctx, workers, callback, &wg)
 	}()
 
 	// Wait for dispatcher to finish (either by stop signal or error)
 	dispatchErr := <-dispatcherDone
 
 	// Signal all workers to stop by closing their message channels
+	logger.Info().Int("activeWorkers", len(workers)).Msg("stopping all partition workers")
 	for _, worker := range workers {
 		close(worker.msgCh)
 	}
 
 	// Wait for all workers to finish processing remaining messages
 	wg.Wait()
-	logger.Info().Msg("all topic workers have stopped")
+	logger.Info().Msg("all partition workers have stopped")
 
 	return dispatchErr
 }
 
-// runDispatcher reads messages from Kafka and routes them to the appropriate topic worker
-func (ec *EventConnector) runDispatcher(ctx context.Context, workers map[string]*topicWorker) error {
+// runDispatcher reads messages from Kafka and routes them to the appropriate partition worker
+// It creates new workers dynamically when a message from a new partition is received.
+func (ec *EventConnector) runDispatcher(ctx context.Context, workers map[string]*partitionWorker, callback eventCallback, wg *sync.WaitGroup) error {
 	logger := zerolog.Ctx(ctx)
+
+	bufferSize := ec.opt.WorkerBufferSize
+	if bufferSize <= 0 {
+		bufferSize = defaultWorkerBufferSize
+	}
 
 	for {
 		select {
@@ -276,25 +268,41 @@ func (ec *EventConnector) runDispatcher(ctx context.Context, workers map[string]
 			logger.Error().Err(chErr).Msg("dispatcher received error from channel")
 			return chErr
 		default:
-			msg, err := ec.consumer.ReadMessage(time.Second * 1) // Use timeout to allow checking stop signal
+			// Read message
+			msg, err := ec.consumer.ReadMessage(time.Second * 1)
 			if err != nil {
-				// Check if it's a timeout (no message available)
 				if kafkaErr, ok := err.(kafka.Error); ok && kafkaErr.Code() == kafka.ErrTimedOut {
-					continue // No message, loop again to check stop signal
+					continue
 				}
 				logger.Error().Err(err).Msg("error occurred when reading message")
 				return err
 			}
 
-			// Route message to appropriate topic worker
+			// Identify the partition
 			topic := *msg.TopicPartition.Topic
-			worker, exists := workers[topic]
+			partition := msg.TopicPartition.Partition
+
+			// Create a unique key for this specific partition
+			// e.g., "my-topic-0", "my-topic-1"
+			workerKey := fmt.Sprintf("%s-%d", topic, partition)
+
+			// Check if we already have a worker for this partition
+			worker, exists := workers[workerKey]
 			if !exists {
-				logger.Warn().Str("topic", topic).Msg("received message for unknown topic, skipping")
-				continue
+				logger.Info().Str("workerId", workerKey).Msg("spawning new worker for partition")
+
+				worker = &partitionWorker{
+					id:     workerKey,
+					msgCh:  make(chan *kafka.Message, bufferSize),
+					doneCh: make(chan struct{}),
+				}
+				workers[workerKey] = worker
+
+				wg.Add(1)
+				go ec.runPartitionWorker(ctx, worker, callback, wg)
 			}
 
-			// Send message to worker channel (may block if buffer is full)
+			// Send message to worker channel
 			select {
 			case <-ec.consumer.stopCh:
 				logger.Warn().Msg("dispatcher stopped while sending message to worker")
@@ -306,20 +314,23 @@ func (ec *EventConnector) runDispatcher(ctx context.Context, workers map[string]
 	}
 }
 
-// runTopicWorker processes messages for a single topic sequentially
-func (ec *EventConnector) runTopicWorker(ctx context.Context, worker *topicWorker, callback eventCallback, wg *sync.WaitGroup) {
+// runPartitionWorker processes messages for a single partition sequentially
+func (ec *EventConnector) runPartitionWorker(ctx context.Context, worker *partitionWorker, callback eventCallback, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer close(worker.doneCh)
 
-	logger := zerolog.Ctx(ctx).With().Str("workerTopic", worker.topic).Logger()
-	logger.Info().Msg("topic worker started")
+	// Create a logger with the worker ID context
+	logger := zerolog.Ctx(ctx).With().Str("workerId", worker.id).Logger()
+	logger.Debug().Msg("partition worker started")
 
 	for msg := range worker.msgCh {
 		// Process message with retry logic
+		// Note: Since this worker is exclusive to one partition,
+		// processing is sequential and safe for offset commits.
 		err := ec.executeCallbackWithRetry(ctx, msg, callback)
 		if err != nil {
 			logger.Error().Err(err).Str("key", string(msg.Key)).Msg("callback() returned error")
-			// Don't stop the worker, continue processing next message
+			// We continue to the next message even if callback failed (after retries/DLQ)
 		}
 
 		// Commit to store
@@ -329,5 +340,5 @@ func (ec *EventConnector) runTopicWorker(ctx context.Context, worker *topicWorke
 		}
 	}
 
-	logger.Info().Msg("topic worker stopped")
+	logger.Debug().Msg("partition worker stopped")
 }
