@@ -11,6 +11,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// ErrMessageSentToDLQ is returned when a message was sent to the Dead Letter Queue
+// after all retry attempts failed. This allows callers to distinguish between
+// a successful callback and a DLQ-handled failure.
+var ErrMessageSentToDLQ = errors.New("message sent to DLQ after callback failures")
+
 type eventConsumer struct {
 	*kafka.Consumer
 	stopCh     chan bool
@@ -83,8 +88,12 @@ func (ec *EventConnector) ConsumeEvent(ctx context.Context, topics []string, cal
 			logger.Error().Msg("error occurred, return error to upstream caller")
 			return chErr
 		default:
-			msg, err := ec.consumer.ReadMessage(-1)
+			// Use timeout to allow checking stop signal
+			msg, err := ec.consumer.ReadMessage(time.Second * 1)
 			if err != nil {
+				if kafkaErr, ok := err.(kafka.Error); ok && kafkaErr.Code() == kafka.ErrTimedOut {
+					continue // Loop back and check stopCh
+				}
 				logger.Error().Err(err).Msg("error occurred when read message")
 				ec.consumer.errCh <- err
 				return err
@@ -151,11 +160,13 @@ func (ec *EventConnector) executeCallbackWithRetry(ctx context.Context, msg *kaf
 	logger.Error().Str("key", string(key)).Msg("callback parse msg failed, now try to send it to DLQ topic")
 	err := ec.sendToDLQ(ctx, msg)
 	if err != nil {
-		logger.Error().Str("key", string(key)).Msg("failed to send this msg to DLQ, terrible bug happened")
+		logger.Error().Str("key", string(key)).Msg("failed to send this msg to DLQ, critical error")
 		return err
 	}
 
-	return nil
+	// Return sentinel error so caller knows this was a DLQ-handled failure
+	// This allows proper handling (e.g., still commit offset since DLQ succeeded)
+	return ErrMessageSentToDLQ
 }
 
 func (ec *EventConnector) sendToDLQ(ctx context.Context, msg *kafka.Message) error {
@@ -200,9 +211,10 @@ type partitionWorker struct {
 // It creates a dedicated worker goroutine for each Topic+Partition combination.
 // This ensures maximum parallelism (up to the number of partitions) while maintaining
 // sequential processing order within a specific partition.
+// Workers are automatically cleaned up when partitions are revoked during rebalancing.
 func (ec *EventConnector) ConsumeEventConcurrently(ctx context.Context, topics []string, callback eventCallback) error {
 	logger := zerolog.Ctx(ctx)
-	if topics == nil || len(topics) == 0 {
+	if len(topics) == 0 {
 		logger.Error().Msg("no topics parameter when calling ConsumeEventConcurrently function")
 		return errors.New("topics list must be passed into this function")
 	}
@@ -213,7 +225,38 @@ func (ec *EventConnector) ConsumeEventConcurrently(ctx context.Context, topics [
 
 	logger.Debug().Strs("topics", topics).Msg("start consuming events concurrently")
 
-	err := ec.consumer.SubscribeTopics(topics, nil)
+	// Channel to communicate revoked partitions from rebalance callback to dispatcher
+	revokedCh := make(chan []kafka.TopicPartition, 10)
+
+	// Rebalance callback to handle partition assignment/revocation
+	rebalanceCb := func(c *kafka.Consumer, event kafka.Event) error {
+		switch e := event.(type) {
+		case kafka.AssignedPartitions:
+			logger.Info().Int("count", len(e.Partitions)).Msg("partitions assigned")
+			for _, tp := range e.Partitions {
+				logger.Debug().Str("topic", *tp.Topic).Int32("partition", tp.Partition).Msg("assigned partition")
+			}
+			// Let librdkafka handle the assignment automatically
+			return nil
+
+		case kafka.RevokedPartitions:
+			logger.Info().Int("count", len(e.Partitions)).Msg("partitions revoked")
+			for _, tp := range e.Partitions {
+				logger.Debug().Str("topic", *tp.Topic).Int32("partition", tp.Partition).Msg("revoked partition")
+			}
+			// Send revoked partitions to dispatcher for worker cleanup
+			select {
+			case revokedCh <- e.Partitions:
+			default:
+				logger.Warn().Msg("revoked channel full, some workers may not be cleaned up")
+			}
+			// Let librdkafka handle the revocation automatically
+			return nil
+		}
+		return nil
+	}
+
+	err := ec.consumer.SubscribeTopics(topics, rebalanceCb)
 	if err != nil {
 		logger.Error().Err(err).Msg("subscribe topics failed, no retry, just return error to upstream")
 		return err
@@ -223,6 +266,7 @@ func (ec *EventConnector) ConsumeEventConcurrently(ctx context.Context, topics [
 	// We do NOT pre-create workers here anymore.
 	// Workers will be created lazily in runDispatcher based on assigned partitions.
 	workers := make(map[string]*partitionWorker)
+	var workersLock sync.Mutex // Protect workers map
 	var wg sync.WaitGroup
 
 	// Main dispatcher loop - reads messages and routes to partition workers
@@ -230,17 +274,22 @@ func (ec *EventConnector) ConsumeEventConcurrently(ctx context.Context, topics [
 
 	// We pass the WaitGroup to the dispatcher so it can Add(1) when creating new workers
 	go func() {
-		dispatcherDone <- ec.runDispatcher(ctx, workers, callback, &wg)
+		dispatcherDone <- ec.runDispatcher(ctx, workers, &workersLock, revokedCh, callback, &wg)
 	}()
 
 	// Wait for dispatcher to finish (either by stop signal or error)
 	dispatchErr := <-dispatcherDone
 
+	// Close revoked channel
+	close(revokedCh)
+
 	// Signal all workers to stop by closing their message channels
+	workersLock.Lock()
 	logger.Info().Int("activeWorkers", len(workers)).Msg("stopping all partition workers")
 	for _, worker := range workers {
 		close(worker.msgCh)
 	}
+	workersLock.Unlock()
 
 	// Wait for all workers to finish processing remaining messages
 	wg.Wait()
@@ -249,9 +298,10 @@ func (ec *EventConnector) ConsumeEventConcurrently(ctx context.Context, topics [
 	return dispatchErr
 }
 
-// runDispatcher reads messages from Kafka and routes them to the appropriate partition worker
+// runDispatcher reads messages from Kafka and routes them to the appropriate partition worker.
 // It creates new workers dynamically when a message from a new partition is received.
-func (ec *EventConnector) runDispatcher(ctx context.Context, workers map[string]*partitionWorker, callback eventCallback, wg *sync.WaitGroup) error {
+// It also cleans up workers when partitions are revoked during rebalancing.
+func (ec *EventConnector) runDispatcher(ctx context.Context, workers map[string]*partitionWorker, workersLock *sync.Mutex, revokedCh <-chan []kafka.TopicPartition, callback eventCallback, wg *sync.WaitGroup) error {
 	logger := zerolog.Ctx(ctx)
 
 	bufferSize := ec.opt.WorkerBufferSize
@@ -264,9 +314,25 @@ func (ec *EventConnector) runDispatcher(ctx context.Context, workers map[string]
 		case <-ec.consumer.stopCh:
 			logger.Warn().Msg("dispatcher received stop signal")
 			return nil
+
 		case chErr := <-ec.consumer.errCh:
 			logger.Error().Err(chErr).Msg("dispatcher received error from channel")
 			return chErr
+
+		case revokedPartitions := <-revokedCh:
+			// Clean up workers for revoked partitions
+			workersLock.Lock()
+			for _, tp := range revokedPartitions {
+				workerKey := fmt.Sprintf("%s-%d", *tp.Topic, tp.Partition)
+				if worker, exists := workers[workerKey]; exists {
+					logger.Info().Str("workerId", workerKey).Msg("cleaning up worker for revoked partition")
+					close(worker.msgCh) // Signal worker to stop
+					delete(workers, workerKey)
+					// Worker will call wg.Done() when it finishes
+				}
+			}
+			workersLock.Unlock()
+
 		default:
 			// Read message
 			msg, err := ec.consumer.ReadMessage(time.Second * 1)
@@ -287,6 +353,7 @@ func (ec *EventConnector) runDispatcher(ctx context.Context, workers map[string]
 			workerKey := fmt.Sprintf("%s-%d", topic, partition)
 
 			// Check if we already have a worker for this partition
+			workersLock.Lock()
 			worker, exists := workers[workerKey]
 			if !exists {
 				logger.Info().Str("workerId", workerKey).Msg("spawning new worker for partition")
@@ -301,6 +368,7 @@ func (ec *EventConnector) runDispatcher(ctx context.Context, workers map[string]
 				wg.Add(1)
 				go ec.runPartitionWorker(ctx, worker, callback, wg)
 			}
+			workersLock.Unlock()
 
 			// Send message to worker channel
 			select {
@@ -328,15 +396,23 @@ func (ec *EventConnector) runPartitionWorker(ctx context.Context, worker *partit
 		// Note: Since this worker is exclusive to one partition,
 		// processing is sequential and safe for offset commits.
 		err := ec.executeCallbackWithRetry(ctx, msg, callback)
+
 		if err != nil {
-			logger.Error().Err(err).Str("key", string(msg.Key)).Msg("callback() returned error")
-			// We continue to the next message even if callback failed (after retries/DLQ)
+			if errors.Is(err, ErrMessageSentToDLQ) {
+				// DLQ succeeded - we should still commit the offset
+				// so this message is not reprocessed
+				logger.Warn().Str("key", string(msg.Key)).Msg("message sent to DLQ, committing offset")
+			} else {
+				// DLQ failed - do NOT commit offset, message will be reprocessed
+				logger.Error().Err(err).Str("key", string(msg.Key)).Msg("callback and DLQ both failed, skipping offset commit")
+				continue
+			}
 		}
 
-		// Commit to store
-		_, err = ec.consumer.StoreMessage(msg)
-		if err != nil {
-			logger.Error().Err(err).Str("key", string(msg.Key)).Msg("commit msg failed")
+		// Commit to store (only reached if callback succeeded OR DLQ succeeded)
+		_, commitErr := ec.consumer.StoreMessage(msg)
+		if commitErr != nil {
+			logger.Error().Err(commitErr).Str("key", string(msg.Key)).Msg("commit msg failed")
 		}
 	}
 

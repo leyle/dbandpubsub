@@ -2,17 +2,18 @@ package event
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/leyle/crud-objectid/pkg/objectid"
 	"github.com/leyle/dbandpubsub/kafkaconnector"
-	"testing"
 )
 
 var (
 	brokers = []string{
-		"k0.x1c.pymom.com:9092",
-		"k1.x1c.pymom.com:9192",
-		"k2.x1c.pymom.com:9292",
+		"k0.dev.test:9092",
+		"k1.dev.test:9093",
+		"k2.dev.test:9094",
 		// "k0.dev.kafka.pymom.com:9092",
 		// "k1.dev.kafka.pymom.com:9192",
 		// "k2.dev.kafka.pymom.com:9292",

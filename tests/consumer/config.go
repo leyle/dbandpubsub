@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/leyle/crud-objectid/pkg/objectid"
 	"github.com/leyle/dbandpubsub/kafkaconnector"
 )
 
 var (
 	brokers = []string{
-		"k0.x1c.pymom.com:9092",
-		"k1.x1c.pymom.com:9192",
-		"k2.x1c.pymom.com:9292",
+		"k0.dev.test:9092",
+		"k1.dev.test:9093",
+		"k2.dev.test:9094",
 	}
 	groupId       = "g-dev-consumer-test"
 	consumeTopics = []string{"dev-cdi-consumer-test"}

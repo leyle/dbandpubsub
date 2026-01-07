@@ -1,20 +1,23 @@
 package kafkaconnector
 
 import (
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"strings"
 	"time"
+
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 const (
-	defaultSessionTimeout   = 6000 // millisecond
-	defaultAdminTimeout     = 30   // seconds
-	defaultOffsetRest       = "earliest"
-	defaultRetryCount       = 3
-	defaultRetryDelay       = 5   // seconds
-	defaultDQLTopic         = "dead-letter-queue"
-	defaultRequestMsgSize   = 10_000_000 // ~ 10m
-	defaultWorkerBufferSize = 100        // buffer size for topic worker channels
+	defaultSessionTimeout     = 6000 // millisecond
+	defaultAdminTimeout       = 30   // seconds
+	defaultOffsetRest         = "earliest"
+	defaultRetryCount         = 3
+	defaultRetryDelay         = 5 // seconds
+	defaultDQLTopic           = "dead-letter-queue"
+	defaultRequestMsgSize     = 10_000_000 // ~ 10m
+	defaultWorkerBufferSize   = 100        // buffer size for topic worker channels
+	defaultPartitionKeyHeader = "dataId"   // default header name for custom partition key
+	defaultPartitionCacheTTL  = 5 * time.Minute
 )
 
 type EventOption struct {
@@ -43,6 +46,19 @@ type EventOption struct {
 
 	// concurrent consumer options
 	WorkerBufferSize int // buffer size for per-topic worker channels, default is 100
+
+	// producer partition key options
+	// PartitionKeyHeader specifies which header to use for custom partition calculation.
+	// If set and the header exists in Event.Headers, partition is calculated as:
+	// hash(headerValue) % partitionCount
+	// If not set or header doesn't exist, uses kafka.PartitionAny (default Kafka behavior)
+	// Default is "dataId"
+	PartitionKeyHeader string
+
+	// PartitionCacheTTL specifies how long to cache partition counts before refreshing.
+	// This handles scenarios where topic partitions are increased.
+	// Default is 5 minutes. Set to 0 to disable caching (query every time).
+	PartitionCacheTTL time.Duration
 
 	MoreOptions map[string]kafka.ConfigValue
 
