@@ -34,7 +34,7 @@ func newConsumer(opt *EventOption) (*eventConsumer, error) {
 		"auto.offset.reset":        opt.OffsetReset,
 		"enable.auto.offset.store": opt.OffsetAutoStore,
 	}
-	if opt.MoreOptions != nil && len(opt.MoreOptions) > 0 {
+	if len(opt.MoreOptions) > 0 {
 		for k, v := range opt.MoreOptions {
 			conf[k] = v
 		}
@@ -61,7 +61,7 @@ type eventCallback func(ctx context.Context, msg *kafka.Message) error
 
 func (ec *EventConnector) ConsumeEvent(ctx context.Context, topics []string, callback eventCallback) error {
 	logger := zerolog.Ctx(ctx)
-	if topics == nil || len(topics) == 0 {
+	if len(topics) == 0 {
 		logger.Error().Msg("no topics parameter when calling ConsumeEvent function")
 		return errors.New("topics list must be passed into this function")
 
@@ -177,10 +177,16 @@ func (ec *EventConnector) sendToDLQ(ctx context.Context, msg *kafka.Message) err
 
 	logger.Warn().Str("key", string(key)).Str("topic", *topic).Msg("send this failed msg to DLQ")
 
-	// process headers
+	// process headers - preserve existing headers
 	reqHeaders := make(map[string]string)
 	for _, header := range msg.Headers {
 		reqHeaders[header.Key] = string(header.Value)
+	}
+
+	// Add original_topic header for DLQ resend functionality
+	// Only set if not already present (in case of re-DLQ from a previous resend)
+	if _, exists := reqHeaders["original_topic"]; !exists {
+		reqHeaders["original_topic"] = *topic
 	}
 
 	event := &Event{

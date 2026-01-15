@@ -3,10 +3,11 @@ package kafkaconnector
 import (
 	"context"
 	"errors"
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/rs/zerolog"
 	"strings"
 	"time"
+
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/rs/zerolog"
 )
 
 type eventAdminClient struct {
@@ -23,7 +24,7 @@ func newEventAdminClient(opt *EventOption) (*eventAdminClient, error) {
 		"bootstrap.servers": opt.GetServers(),
 	}
 
-	if opt.MoreOptions != nil && len(opt.MoreOptions) > 0 {
+	if len(opt.MoreOptions) > 0 {
 		for k, v := range opt.MoreOptions {
 			conf[k] = v
 		}
