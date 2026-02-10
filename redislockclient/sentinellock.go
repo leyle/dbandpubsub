@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/leyle/crud-objectid/pkg/objectid"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
-	"strings"
-	"time"
 )
 
 type SentinelRedisClient struct {
@@ -73,7 +74,14 @@ func (r *SentinelRedisClient) AcquireLock(ctx context.Context, resource string, 
 	logger.Debug().Str("lockResource", redisKey).Send()
 
 	for time.Now().UnixMilli() < endTime.UnixMilli() {
-		ok, err := r.SetNX(context.Background(), redisKey, val, lockTimeout).Result()
+		select {
+		case <-ctx.Done():
+			logger.Warn().Err(ctx.Err()).Str("resource", resource).Msg("acquire lock canceled by context")
+			return "", false
+		default:
+		}
+
+		ok, err := r.SetNX(ctx, redisKey, val, lockTimeout).Result()
 		if err != nil {
 			logger.Error().Err(err).Str("resource", resource).Msg("try to set redis lock(SetNX) failed")
 			return "", false
@@ -83,7 +91,12 @@ func (r *SentinelRedisClient) AcquireLock(ctx context.Context, resource string, 
 			return val, true
 		} else {
 			// retry with 10 millisecond
-			time.Sleep(defaultRetryDuration)
+			select {
+			case <-ctx.Done():
+				logger.Warn().Err(ctx.Err()).Str("resource", resource).Msg("acquire lock canceled while waiting retry")
+				return "", false
+			case <-time.After(defaultRetryDuration):
+			}
 			continue
 		}
 	}
@@ -92,30 +105,87 @@ func (r *SentinelRedisClient) AcquireLock(ctx context.Context, resource string, 
 	return "", false
 }
 
+// AcquireLockObject acquires a lock and returns a Lock object for easier management.
+func (r *SentinelRedisClient) AcquireLockObject(ctx context.Context, resource string, acquireTimeout, lockTimeout time.Duration) (*Lock, bool) {
+	val, ok := r.AcquireLock(ctx, resource, acquireTimeout, lockTimeout)
+	if !ok {
+		return nil, false
+	}
+	return NewLock(r, resource, val), true
+}
+
+// ExtendLock extends the TTL of an existing lock if the caller still owns it.
+// Uses a Lua script for atomic check-and-extend operation.
+func (r *SentinelRedisClient) ExtendLock(ctx context.Context, resource, val string, extendDuration time.Duration) bool {
+	logger := zerolog.Ctx(ctx)
+	redisKey := r.GenerateRedisKey(moduleName, resource)
+
+	result, err := r.Eval(ctx, extendLockScript, []string{redisKey}, val, extendDuration.Milliseconds()).Int()
+	if err != nil {
+		logger.Error().Err(err).Str("resource", resource).Msg("extend lock failed")
+		return false
+	}
+
+	if result == 1 {
+		logger.Debug().Str("resource", resource).Dur("extendBy", extendDuration).Msg("lock extended successfully")
+		return true
+	}
+
+	logger.Warn().Str("resource", resource).Msg("extend lock failed - lock not owned or expired")
+	return false
+}
+
+// IsLockHeld checks if the lock is currently held by the caller with the specified value.
+func (r *SentinelRedisClient) IsLockHeld(ctx context.Context, resource, val string) bool {
+	logger := zerolog.Ctx(ctx)
+	redisKey := r.GenerateRedisKey(moduleName, resource)
+
+	v, err := r.Get(ctx, redisKey).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			logger.Debug().Str("resource", resource).Msg("lock key does not exist")
+			return false
+		}
+		logger.Error().Err(err).Str("resource", resource).Msg("check lock held failed")
+		return false
+	}
+
+	return v == val
+}
+
+// GetLockTTL returns the remaining TTL of a lock.
+// Returns -2 if the key doesn't exist, -1 if no TTL is set.
+func (r *SentinelRedisClient) GetLockTTL(ctx context.Context, resource string) time.Duration {
+	logger := zerolog.Ctx(ctx)
+	redisKey := r.GenerateRedisKey(moduleName, resource)
+
+	ttl, err := r.PTTL(ctx, redisKey).Result()
+	if err != nil {
+		logger.Error().Err(err).Str("resource", resource).Msg("get lock TTL failed")
+		return -1
+	}
+
+	return ttl
+}
+
 func (r *SentinelRedisClient) ReleaseLock(ctx context.Context, resource, val string) bool {
 	logger := zerolog.Ctx(ctx)
 
 	redisKey := r.GenerateRedisKey(moduleName, resource)
 
-	v, err := r.Get(context.Background(), redisKey).Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		logger.Error().Err(err).Str("resource", resource).Str("val", val).Msg("release redis lock failed")
+	result, err := r.Eval(ctx, releaseLockScript, []string{redisKey}, val).Int()
+	if err != nil {
+		logger.Error().Err(err).Str("resource", resource).Str("val", val).Msg("release redis lock failed (atomic eval)")
 		return false
 	}
 
-	if errors.Is(err, redis.Nil) {
-		logger.Debug().Str("resource", resource).Str("val", val).Msg("lock key has expired, release lock succeed")
+	if result == 1 {
+		logger.Debug().Str("resource", resource).Str("val", val).Msg("delete lock key, release lock succeed")
 		return true
 	}
 
-	if v == val {
-		r.Del(context.Background(), redisKey)
-		logger.Debug().Str("resource", resource).Str("val", val).Msg("delete lock key, release lock succeed")
-		return true
-	} else {
-		logger.Warn().Str("resource", resource).Str("val", val).Msg("when try to release lock, but the lock has locked by others, we think this situation is ok ")
-		return true
-	}
+	logger.Warn().Str("resource", resource).Str("val", val).Msg("release skipped: lock already expired or owned by another client")
+	return true
 }
 
 func (r *SentinelRedisClient) Close() error {

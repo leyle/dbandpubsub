@@ -2,18 +2,22 @@ package redislockclient
 
 import (
 	"errors"
-	"github.com/leyle/crud-objectid/pkg/objectid"
 	"testing"
 	"time"
+
+	"github.com/leyle/crud-objectid/pkg/objectid"
 )
 
 var sentinelHostPorts = []string{
-	"redis.x1c.pymom.com:26379",
-	"redis.x1c.pymom.com:26380",
-	"redis.x1c.pymom.com:26381",
+	"redis.dev.test:26379",
+	"redis.dev.test:26380",
+	"redis.dev.test:26381",
+	"redis.dev.test:26382",
+	"redis.dev.test:26383",
+	"redis.dev.test:26384",
 }
 
-func newRedisClientSentinel() *SentinelRedisClient {
+func newRedisClientSentinel(t *testing.T) *SentinelRedisClient {
 	var cfg = &RedisClientOption{
 		HostPorts:   sentinelHostPorts,
 		ServiceName: "TEST",
@@ -22,13 +26,13 @@ func newRedisClientSentinel() *SentinelRedisClient {
 
 	client, err := NewSentinelRedisClient(cfg)
 	if err != nil {
-		panic(err)
+		t.Skipf("Skipping sentinel test: %v (expected if no sentinel available)", err)
 	}
 	return client
 }
 
 func TestNewSentinelRedisClient(t *testing.T) {
-	client := newRedisClientSentinel()
+	client := newRedisClientSentinel(t)
 	ctx := wrapZeroLogContext()
 
 	resource := objectid.GetObjectId()
