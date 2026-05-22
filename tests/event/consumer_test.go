@@ -3,7 +3,7 @@ package event
 import (
 	"context"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/leyle/dbandpubsub/kafkaconnector"
+	"github.com/leyle/dbandpubsub/v2/kafkaconnector"
 	"github.com/rs/zerolog"
 	"testing"
 )

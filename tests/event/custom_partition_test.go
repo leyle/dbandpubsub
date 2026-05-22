@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/leyle/crud-objectid/pkg/objectid"
-	"github.com/leyle/dbandpubsub/kafkaconnector"
+	"github.com/leyle/dbandpubsub/v2/kafkaconnector"
 )
 
 var customPartitionBrokers = []string{
