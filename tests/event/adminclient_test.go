@@ -1,7 +1,7 @@
 package event
 
 import (
-	"github.com/leyle/dbandpubsub/kafkaconnector"
+	"github.com/leyle/dbandpubsub/v2/kafkaconnector"
 	"testing"
 )
 

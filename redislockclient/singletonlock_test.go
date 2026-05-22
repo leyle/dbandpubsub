@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/leyle/crud-objectid/pkg/objectid"
-	"github.com/leyle/dbandpubsub/logclient"
+	"github.com/leyle/dbandpubsub/v2/logclient"
 	"github.com/rs/zerolog"
 )
 

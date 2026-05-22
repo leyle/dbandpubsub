@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 	"sync"
 	"testing"
 	"time"
@@ -28,7 +27,7 @@ type Sample struct {
 }
 
 func generateData() *Sample {
-	dataId := primitive.NewObjectID().Hex()
+	dataId := bson.NewObjectID().Hex()
 	data := &Sample{
 		Id:      dataId,
 		Name:    "axel",
@@ -46,7 +45,7 @@ type SampleConsent struct {
 }
 
 func generateSampleConsent() *SampleConsent {
-	dataId := primitive.NewObjectID().Hex()
+	dataId := bson.NewObjectID().Hex()
 
 	consent := []byte(`{
     "private": {
@@ -145,7 +144,7 @@ func TestClient(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(op.uri()))
+	client, err := mongo.Connect(options.Client().ApplyURI(op.uri()))
 	if err != nil {
 		t.Error(err)
 	}
@@ -161,7 +160,7 @@ func TestClient(t *testing.T) {
 		t.Error(err)
 	}
 
-	dataId := primitive.NewObjectID().Hex()
+	dataId := bson.NewObjectID().Hex()
 	data := &Sample{
 		Id:      dataId,
 		Name:    "axel",
@@ -307,7 +306,7 @@ func TestTransaction(t *testing.T) {
 	ds := NewDataSource(op)
 	defer ds.Close()
 
-	callback := func(sctx mongo.SessionContext) (interface{}, error) {
+	callback := func(ctx context.Context) (any, error) {
 		return nil, nil
 	}
 

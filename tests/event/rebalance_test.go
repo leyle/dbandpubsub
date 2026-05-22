@@ -9,7 +9,7 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/leyle/crud-objectid/pkg/objectid"
-	"github.com/leyle/dbandpubsub/kafkaconnector"
+	"github.com/leyle/dbandpubsub/v2/kafkaconnector"
 )
 
 // TestRebalanceCleanup tests that the rebalance callback is properly invoked

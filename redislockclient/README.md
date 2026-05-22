@@ -10,7 +10,7 @@ This README focuses on **cluster mode**, which is the primary production mode.
 ## Import
 
 ```go
-import "github.com/leyle/dbandpubsub/redislockclient"
+import "github.com/leyle/dbandpubsub/v2/redislockclient"
 ```
 
 ## Lock lifecycle (cluster mode)
@@ -32,7 +32,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/leyle/dbandpubsub/redislockclient"
+	"github.com/leyle/dbandpubsub/v2/redislockclient"
 )
 
 func main() {

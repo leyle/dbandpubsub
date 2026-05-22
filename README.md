@@ -11,9 +11,19 @@ A Go library providing connectors for databases and message queues with built-in
 
 ## Installation
 
+For the current v2 module:
+
+```bash
+go get github.com/leyle/dbandpubsub/v2
+```
+
+Consumers that are not ready for v2 can stay on the v1 module path:
+
 ```bash
 go get github.com/leyle/dbandpubsub
 ```
+
+Use v2 imports with the `/v2` suffix, for example `github.com/leyle/dbandpubsub/v2/mongodb`.
 
 ---
 
@@ -22,7 +32,7 @@ go get github.com/leyle/dbandpubsub
 ### Quick Start
 
 ```go
-import "github.com/leyle/dbandpubsub/kafkaconnector"
+import "github.com/leyle/dbandpubsub/v2/kafkaconnector"
 
 opt := &kafkaconnector.EventOption{
     Brokers:           []string{"localhost:9092"},
@@ -117,7 +127,7 @@ Connection wrapper with pooling, replica set support, and index management.
 ### Quick Start
 
 ```go
-import "github.com/leyle/dbandpubsub/mongodb"
+import "github.com/leyle/dbandpubsub/v2/mongodb"
 
 opt := &mongodb.MgoOption{
     HostPorts:    []string{"localhost:27017"},
@@ -183,7 +193,7 @@ type MgoOption struct {
 Distributed locking with support for standalone, sentinel, and cluster modes.
 
 ```go
-import "github.com/leyle/dbandpubsub/redislockclient"
+import "github.com/leyle/dbandpubsub/v2/redislockclient"
 
 // Acquire lock
 lock, err := client.Lock(ctx, "resource-key", 30*time.Second)

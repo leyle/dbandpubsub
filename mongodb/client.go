@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 	"sync"
 	"time"
 )
@@ -57,7 +57,7 @@ func NewDataSource(op *MgoOption) *DataSource {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(op.ReadTimeout)*time.Second)
 	defer cancel()
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(op.uri()), defaultClientPoolSizeOption, op.MoreOptions)
+	client, err := mongo.Connect(options.Client().ApplyURI(op.uri()), defaultClientPoolSizeOption, op.MoreOptions)
 	if err != nil {
 		panic(err)
 	}
@@ -121,10 +121,7 @@ func (ds *DataSource) InsureSingleIndexes(collection string, keys []string) erro
 
 func (ds *DataSource) InsureUniqueIndexes(collection string, keys []string) error {
 	var idxKeys []mongo.IndexModel
-	var optTrue = true
-	uniqueOpt := &options.IndexOptions{
-		Unique: &optTrue,
-	}
+	uniqueOpt := options.Index().SetUnique(true)
 	for _, key := range keys {
 		idxKey := mongo.IndexModel{
 			Keys: bson.M{
